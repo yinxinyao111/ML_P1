@@ -115,3 +115,8 @@ class MultiHeadAttentionBlock(nn.Module):
         # multiply by w_o (batch, seq_len, d_model)
         return self.w_o(x)
     
+# basic units are defined above, now compile them to encoders and decoders
+# ----------------------------------------------------------
+
+class EncoderBlock(nn.Module):
+    def __init__(self, features: int, self_attention_block: MultiHeadAttentionBlock, feed_forward_block)
