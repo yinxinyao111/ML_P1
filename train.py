@@ -19,6 +19,10 @@ from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
+
+# data visualization
+import torchmetrics
+from torch.utils.tensorboard import SummaryWriter
 # -----------------------------------------------------------------
 # Dataset related 
 def get_ds(config):
@@ -84,6 +88,7 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
     return model
 
 def train_model(config):
+    # device setup
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     print("Training on ", device)
     device = torch.device(device)
@@ -95,4 +100,62 @@ def train_model(config):
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
     model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size()).to(device)
     
+    # Tensorboard
+    writer = SummaryWriter(config["experiment_name"])
     
+    # Optimizer & loss fn
+    optimizer = torch.optim.Adam(model.parameters(), lr = config["lr"], eps = 1e-9)
+    loss_fn = nn.CrossEntropyLoss(ignore_index = tokenizer_src.token_to_id("[PAD]"), label_smoothing = 0.1).to(device)
+    
+    # training setup
+    initial_epoch, global_step = 0, 0
+    
+    preload = config["preload"]
+    model_filename = latest_weights_file_path(config) if preload == "latest" else get_weights_file_path(config, preload) if preload else None
+    if model_filename:
+        print(f"Loading model{model_filename}")
+        state = torch.load(model_filename)
+        model.load_state_dict(state["model_state_dict"])
+        initial_epoch = state["epoch"] + 1
+        optimizer.load_state_dict(state["optimizer_state_dict"])
+        global_step = state["global_step"]
+    else:
+        print("No model to preload, starting from scratch")
+
+    # training
+    for epoch in range(initial_epoch, config["num_epochs"]):
+        model.train()
+        batch_iterator = tqdm(train_dataloader, desc = f"Processing epoch {epoch}")
+        for batch in batch_iterator:
+            encoder_input = batch["encoder_input"].to(device)
+            decoder_input = batch["decoder_input"].to(device)
+            encoder_mask = batch['encoder_mask'].to(device) 
+            decoder_mask = batch['decoder_mask'].to(device) 
+
+            # pass through model
+            encoder_output = model.encode(encoder_input, encoder_mask)
+            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+            proj_output = model.project(decoder_output) # (batch, seq_len, vocab_size)
+            
+            # retrieve label
+            label = batch["label"].to(device) # (batch, seq_len)
+            
+            # compute loss
+            loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
+            
+            # display loss, rounded to 3 deci precision, padded to 6 length
+            batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
+            
+            # log the loss
+            writer.add_scalar("train loss", loss.item(), global_step)
+            writer.flush()
+            
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad(set_to_none = True)
+            global_step += 1
+        
+        # validation
+        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config["seq_len"], device, batch_iterator.write(msg), global_step, writer)
+        
+        # 
