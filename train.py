@@ -87,6 +87,15 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     model.eval()
     count = 0
     
+    try:
+        # get the console window width
+        with os.popen('stty size', 'r') as console:
+            _, console_width = console.read().split()
+            console_width = int(console_width)
+    except:
+        # If we can't get the console width, use 80 as default
+        console_width = 80
+    
     source_texts = []
     expected = []
     predicted = []
