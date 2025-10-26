@@ -1,6 +1,6 @@
-from model import built_transformer
+from model import build_transformer
 from config import get_config, get_weights_file_path, latest_weights_file_path
-#from dataset import BilingualDataset, causal_mask
+from dataset import BilingualDataset, causal_mask
 
 import torch
 import torch.nn as nn
@@ -61,7 +61,7 @@ def get_ds(config):
 # Auxillary function for get_ds()
 def get_or_build_tokenizer(config, ds, lang):
     # ex. tokenizer_ru.json
-    tokenizer_path = Path(config["tokenizer_file"]).format(lang)
+    tokenizer_path = Path(config["tokenizer_file"].format(lang))
     if not Path.exists(tokenizer_path):
         # create tokenizer object
         tokenizer = Tokenizer(WordLevel(unk_token = "[UNK]"))
@@ -79,7 +79,7 @@ def get_or_build_tokenizer(config, ds, lang):
 # Auxillary function for get_or_build_tokenizer()
 def get_all_sentences(ds, lang):
     for item in ds:
-        yield item["translation"]["lang"]
+        yield item["translation"][lang]
 
 #-------------------------------------------------------------
 # training related
@@ -242,7 +242,7 @@ def train_model(config):
             global_step += 1
         
         # validation
-        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config["seq_len"], device, batch_iterator.write(msg), global_step, writer)
+        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config["seq_len"], device, lambda msg: batch_iterator.write(msg), global_step, writer)
         
         # save model per epoch
         model_filename = get_weights_file_path(config, f"{epoch:02d}")

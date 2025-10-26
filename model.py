@@ -10,10 +10,11 @@ class InputEmbeddings(nn.Module):
         self.embedding = nn.Embedding(vocab_size, d_model)
     def forward(self, x):
         # (batch, seq_len) -> (batch, seq_len, d_model)
-        return self.embedding(x) * math.sqrt(x)
+        return self.embedding(x) * math.sqrt(self.d_model)
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, seq_len: int, dropout: float):
+        super().__init__()
         self.d_model = d_model
         self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
@@ -39,7 +40,7 @@ class PositionalEncoding(nn.Module):
     
 class LayerNormalization(nn.Module):
     def __init__(self, features: int, eps: float = 10**-6):
-        super.__init__()
+        super().__init__()
         self.eps = eps
         self.alpha = nn.Parameter(torch.ones(features)) # (d_model)
         self.bias = nn.Parameter(torch.zeros(features)) # (d_model)
@@ -110,7 +111,7 @@ class MultiHeadAttentionBlock(nn.Module):
         x, self.attention_scores = MultiHeadAttentionBlock.attention(query, key, value, mask, self.dropout)
         
         # (batch, seq_len, d_model)
-        x = x.transpose(1,2).contiguous().view(x.shape[0, -1, self.h * self.d_k])
+        x = x.transpose(1,2).contiguous().view(x.shape[0], -1, self.h * self.d_k)
         
         # multiply by w_o (batch, seq_len, d_model)
         return self.w_o(x)
@@ -136,7 +137,7 @@ class Encoder(nn.Module):
         self.norm = LayerNormalization(features)
     def forward(self, x, mask):
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, mask)
         return self.norm(x)
 
 class DecoderBlock(nn.Module):
@@ -201,7 +202,7 @@ class Transformer(nn.Module):
         # (batch, seq_len, vocab_size)
         return self.projection_layer(x)
     
-def built_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1, d_ff: int = 2048):
+def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1, d_ff: int = 2048):
     # create embedding layers
     src_embed = InputEmbeddings(d_model, src_vocab_size)
     tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
